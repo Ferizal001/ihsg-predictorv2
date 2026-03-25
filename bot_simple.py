@@ -1,6 +1,5 @@
 import os
-from telegram import Update
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler
 
 TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
 
@@ -11,23 +10,19 @@ async def lampu(update, ctx):
     await update.message.reply_text("LAMPU: HIJAU - Kondisi pasar normal.")
 
 async def status(update, ctx):
-    await update.message.reply_text("Status: Online - Bot berjalan 24 jam!")
+    await update.message.reply_text("Status: Online 24 jam!")
 
 async def ranking(update, ctx):
-    teks = "TOP 5 SAHAM HARI INI:
-"
-    teks += "1. BMRI  | Skor: 51 | Proba naik: 65%
-"
-    teks += "2. PTBA  | Skor: 51 | Proba naik: 47%
-"
-    teks += "3. ITMG  | Skor: 50 | Proba naik: 47%
-"
-    teks += "4. ADRO  | Skor: 48 | Proba naik: 47%
-"
-    teks += "5. ASII  | Skor: 46 | Proba naik: 49%
-"
-    teks += "Data: 2026-03-25"
-    await update.message.reply_text(teks)
+    baris = [
+        "TOP 5 SAHAM HARI INI:",
+        "1. BMRI  | Skor: 51 | Proba: 65%",
+        "2. PTBA  | Skor: 51 | Proba: 47%",
+        "3. ITMG  | Skor: 50 | Proba: 47%",
+        "4. ADRO  | Skor: 48 | Proba: 47%",
+        "5. ASII  | Skor: 46 | Proba: 49%",
+        "Data: 2026-03-25",
+    ]
+    await update.message.reply_text(chr(10).join(baris))
 
 async def help_cmd(update, ctx):
     await update.message.reply_text("/start /lampu /ranking /status /help")
