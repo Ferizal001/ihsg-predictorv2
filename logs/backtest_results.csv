@@ -1,0 +1,16 @@
+periode,sektor,akurasi,n_sample
+2026-01,tambang,0.49,100
+2026-01,lainnya,0.4955,220
+2026-01,perbankan,0.3,20
+2026-01,energi,0.4167,60
+2026-01,agribisnis,0.6,60
+2026-02,energi,0.463,54
+2026-02,lainnya,0.4848,198
+2026-02,tambang,0.4222,90
+2026-02,perbankan,0.5,18
+2026-02,agribisnis,0.5,54
+2026-03,lainnya,0.6284,148
+2026-03,tambang,0.6462,65
+2026-03,energi,0.5714,42
+2026-03,agribisnis,0.675,40
+2026-03,perbankan,0.6923,13
