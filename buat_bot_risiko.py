@@ -1,4 +1,4 @@
-import os
+code = """import os
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -229,3 +229,8 @@ def main():
 
 if __name__ == "__main__":
     main()
+"""
+
+with open("bot_simple.py", "w") as f:
+    f.write(code)
+print("bot_simple.py berhasil dibuat!")
