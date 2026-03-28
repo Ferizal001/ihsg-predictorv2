@@ -16,26 +16,39 @@ CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
 # ── Kamus sentimen ────────────────────────────────────────────
 POSITIF = [
-    "naik","tumbuh","meningkat","rekor","laba","untung","dividen",
-    "kontrak","ekspansi","investasi","rally","bullish","profit",
-    "surplus","optimis","pulih","menguat","solid","positif",
-    "minyak naik","crude naik","coal naik","emas naik","gold naik",
-    "harga minyak","harga emas","harga batu bara","harga coal",
-    "energy rally","komoditas naik","windfall","supercycle",
-    "akuisisi","right issue","buyback","stock split","dividen naik",
-    "laba naik","pendapatan naik","pertumbuhan","ekspor naik",
+    "laba naik","laba tumbuh","laba meningkat","laba bersih naik",
+    "pendapatan naik","revenue naik","omzet naik",
+    "dividen","buyback","right issue","stock split",
+    "kontrak baru","akuisisi","ekspansi","investasi masuk",
+    "top gainer","rally","menguat","rebound","pulih","recovery",
+    "batu bara naik","coal naik","harga batu bara",
+    "minyak naik","crude naik","harga minyak naik",
+    "emas naik","gold naik","harga emas naik",
+    "perak naik","nikel naik","tembaga naik",
+    "komoditas naik","energi naik",
+    "inflasi turun","deflasi","suku bunga turun","fed cut",
+    "rupiah menguat","rupiah apresiasi",
+    "ekspor naik","neraca dagang surplus",
+    "IPO","listing baru","right issue",
 ]
 NEGATIF = [
-    "turun","merosot","anjlok","rugi","kerugian","bangkrut",
-    "suspensi","delisting","gagal","default","korupsi","kasus",
-    "bearish","tekanan","krisis","resesi","perang","bencana",
-    "tersangka","penyidikan","sanksi","pembekuan",
-    "perang","serangan","rudal","bom","militer","konflik",
-    "Iran","Israel","Hormuz","blokade","eskalasi","invasi",
-    "geopolitik","ketegangan","ancaman","embargo",
-    "inflasi tinggi","stagflasi","resesi global","PHK massal",
-    "bangkrut","pailit","gagal bayar","kredit macet",
-    "banjir","gempa","tsunami","kebakaran hutan","kekeringan",
+    "rugi","kerugian","laba turun","laba merosot","laba anjlok",
+    "pendapatan turun","revenue turun",
+    "bangkrut","pailit","gagal bayar","default","delisting","suspensi",
+    "korupsi","tersangka","penyidikan","penyelidikan","kasus hukum",
+    "perang","serangan","rudal","bom","militer","konflik bersenjata",
+    "Iran","Hormuz","blokade","embargo","sanksi",
+    "eskalasi","geopolitik panas","ketegangan militer",
+    "minyak naik inflasi","bbm naik","harga bbm naik",
+    "inflasi naik","inflasi tinggi","harga pangan naik",
+    "suku bunga naik","fed naik","bi rate naik",
+    "rupiah melemah","rupiah anjlok","dolar naik",
+    "resesi","krisis","stagflasi","perlambatan ekonomi",
+    "PHK","pemutusan kerja","tutup pabrik",
+    "banjir","gempa","tsunami","bencana alam",
+    "IHSG turun","IHSG melemah","IHSG anjlok",
+    "asing jual","foreign sell","net sell asing",
+    "cpo turun","sawit turun",
 ]
 
 SAHAM_LIST = [
@@ -296,10 +309,10 @@ def evaluasi():
 
 # ── Jadwal ────────────────────────────────────────────────────
 def jalankan_jadwal():
-    schedule.every().day.at("08:00").do(download_data)
-    schedule.every().day.at("08:15").do(scoring_harian)
-    schedule.every().day.at("15:30").do(evaluasi)
-    print("Jadwal aktif: 08:00 download | 08:15 scoring | 15:30 evaluasi")
+    schedule.every().day.at("01:00").do(download_data)
+    schedule.every().day.at("01:15").do(scoring_harian)
+    schedule.every().day.at("08:30").do(evaluasi)
+    print("Jadwal aktif: 08:00 WIB download | 08:15 WIB scoring | 15:30 WIB evaluasi")
     while True:
         schedule.run_pending()
         time.sleep(30)
@@ -397,8 +410,8 @@ async def status(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "Status Sistem IHSG Predictor:",
         "",
         "Bot      : Online 24 jam di Railway",
-        "Jadwal   : 08:00 download | 08:15 scoring",
-        "           08:30 kirim ranking | 15:30 evaluasi",
+        "Jadwal   : 08:00 WIB download | 08:15 WIB scoring",
+        "           Ranking masuk Telegram jam 08:15 WIB",
         "Model    : 11 sektor RandomForest",
         "Saham    : 70 saham aktif",
         "Akurasi  : 60.45%",
