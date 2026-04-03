@@ -600,6 +600,15 @@ if AUTO_RETRAIN_OK:
     schedule.every().sunday.at("19:00").do(jalankan_retrain)
     print("[JADWAL] Auto retrain: setiap Minggu 02:00 WIB")
 
+
+# ── Jadwal Brain ────────────────────────────────────────────
+if BRAIN_OK:
+    # 08:00 WIB = 01:00 UTC
+    schedule.every().day.at('01:00').do(brain_download)
+    # 22:00 WIB = 15:00 UTC — auto learning
+    schedule.every().day.at('15:00').do(evaluasi_dan_belajar)
+    print('[BRAIN] Jadwal: learning 22:00 WIB, laporan 23:30 WIB')
+
 while True:
         schedule.run_pending()
         time.sleep(30)
