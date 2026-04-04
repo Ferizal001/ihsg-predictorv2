@@ -633,6 +633,7 @@ def kirim_laporan():
 
     error_count = d.get("error_count", 0)
     error_info  = f"⚠️ {error_count} strategi gagal (auto-fixed)\n" if error_count > 0 else ""
+    if best_acc >= TARGET_ACC:
         status_msg = f"🎯 <b>TARGET {TARGET_ACC*100:.0f}% TERCAPAI!</b>"
     elif deployed:
         delta = (best_acc - BASELINE_ACC)*100
