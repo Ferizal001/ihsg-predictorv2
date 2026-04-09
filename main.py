@@ -10,6 +10,7 @@ from datetime import datetime
 from xml.etree import ElementTree as ET
 from telegram import Update
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 TOKEN   = os.environ.get("TELEGRAM_TOKEN", "")
 CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
@@ -83,6 +84,22 @@ SEKTOR_SAHAM = {
     "SCMA":"media","MNCN":"media","EMTK":"media",
     "ACES":"ritel","MAPI":"ritel","LPPF":"ritel","RALS":"ritel",
 }
+
+
+# ── Penyimpanan posisi aktif ──────────────────────────────────
+import json as _json
+POSISI_FILE = "logs/posisi_aktif.json"
+
+def load_posisi():
+    if os.path.exists(POSISI_FILE):
+        try: return _json.load(open(POSISI_FILE))
+        except: pass
+    return {}
+
+def save_posisi(posisi):
+    os.makedirs("logs", exist_ok=True)
+    with open(POSISI_FILE, "w") as f:
+        _json.dump(posisi, f, indent=2)
 
 # ── Fungsi utilitas ───────────────────────────────────────────
 def kirim_telegram(pesan):
@@ -344,6 +361,7 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "/posisi [modal] [skor] - Kalkulator",
         "/data     - Sumber data aktif",
         "/help     - Menu ini",
+        "/cekposisi - Lihat posisi aktif",
     ]
     await update.message.reply_text(chr(10).join(baris))
 
@@ -500,10 +518,78 @@ async def data_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def help_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await start(update, ctx)
 
+async def cek_posisi(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Lihat semua posisi aktif."""
+    posisi = load_posisi()
+    if not posisi:
+        await update.message.reply_text("Tidak ada posisi aktif saat ini.")
+        return
+    baris = ["📋 POSISI AKTIF:", ""]
+    for ticker, info in posisi.items():
+        tgl   = info.get("tgl_beli","?")
+        harga = info.get("harga_beli", 0)
+        baris.append(f"• {ticker} | Beli: Rp{harga:,.0f} | {tgl}")
+    await update.message.reply_text(chr(10).join(baris))
+
 async def tombol(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
-    await q.edit_message_text("Ketik /help untuk semua perintah")
+    data = q.data
+    posisi = load_posisi()
+    tanggal = datetime.now().strftime("%Y-%m-%d")
+
+    if data.startswith("BELI_"):
+        parts  = data.split("_")
+        ticker = parts[1]
+        harga  = float(parts[2]) if len(parts) > 2 else 0
+        posisi[ticker] = {
+            "tgl_beli"   : tanggal,
+            "harga_beli" : harga,
+            "status"     : "HOLD",
+        }
+        save_posisi(posisi)
+        await q.edit_message_text(
+            f"✅ BELI {ticker} dicatat!\n"
+            f"💰 Harga beli: Rp{harga:,.0f}\n"
+            f"📅 Tanggal: {tanggal}\n"
+            f"⏰ Target jual: 1-3 hari\n"
+            f"🔔 Bot akan ingatkan saat sinyal JUAL muncul"
+        )
+
+    elif data.startswith("SKIP_"):
+        ticker = data.split("_")[1]
+        await q.edit_message_text(
+            f"❌ {ticker} di-skip\n"
+            f"Bot akan monitor terus 👀"
+        )
+
+    elif data.startswith("JUAL_"):
+        parts      = data.split("_")
+        ticker     = parts[1]
+        harga_jual = float(parts[2]) if len(parts) > 2 else 0
+        harga_beli = posisi.get(ticker, {}).get("harga_beli", harga_jual)
+        pnl        = (harga_jual - harga_beli) / harga_beli * 100 if harga_beli > 0 else 0
+        icon       = "🟢" if pnl > 0 else "🔴"
+        if ticker in posisi:
+            del posisi[ticker]
+            save_posisi(posisi)
+        await q.edit_message_text(
+            f"{icon} JUAL {ticker} dicatat!\n"
+            f"💰 Harga jual : Rp{harga_jual:,.0f}\n"
+            f"💰 Harga beli : Rp{harga_beli:,.0f}\n"
+            f"📊 PnL        : {pnl:+.2f}%\n"
+            f"📅 Tanggal    : {tanggal}"
+        )
+
+    elif data.startswith("TAHAN_"):
+        ticker = data.split("_")[1]
+        await q.edit_message_text(
+            f"✋ {ticker} ditahan\n"
+            f"Bot tetap monitor posisi ini 👀"
+        )
+
+    else:
+        await q.edit_message_text("Ketik /help untuk semua perintah")
 
 # ── Main ──────────────────────────────────────────────────────
 def main():
@@ -525,6 +611,7 @@ def main():
     app.add_handler(CommandHandler("posisi",  posisi_cmd))
     app.add_handler(CommandHandler("data",    data_cmd))
     app.add_handler(CommandHandler("help",    help_cmd))
+    app.add_handler(CommandHandler("cekposisi", cek_posisi))
     app.add_handler(CallbackQueryHandler(tombol))
 
     print("Bot siap")
