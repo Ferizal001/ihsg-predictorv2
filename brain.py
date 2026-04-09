@@ -122,6 +122,204 @@ def download_asia():
     print(f"  Asia: {len(data)}/14 sumber")
     return data
 
+
+# ══════════════════════════════════════════════════════════════
+# DATA INDONESIA GRATIS
+# ══════════════════════════════════════════════════════════════
+
+def download_bi_rate():
+    """
+    Download BI Rate dari API Bank Indonesia (data.go.id / SEKI BI).
+    Fallback: estimasi dari Yahoo Finance (^IRX proxy).
+    Return: pd.Series dengan index tanggal
+    """
+    # Coba dari Yahoo Finance proxy dulu (lebih reliable)
+    tickers_proxy = {
+        "^IRX"  : "tbill",   # US T-Bill 13w
+        "ID10Y=X": "id10y",  # Indonesia 10yr bond
+    }
+    data = {}
+    for ticker, nama in tickers_proxy.items():
+        s = yahoo(ticker)
+        if s is not None:
+            data[nama] = s
+        time.sleep(0.5)
+
+    # Coba API data.go.id BI Rate
+    try:
+        url = "https://api.data.go.id/v1/dinamiskomposit/bi-rate"
+        req = urllib.request.Request(url, headers=HEADERS)
+        with urllib.request.urlopen(req, timeout=10, context=CTX) as r:
+            d = json.loads(r.read().decode())
+        rows = d.get("data", [])
+        if rows:
+            dates = pd.to_datetime([r["periode"] for r in rows], errors="coerce")
+            vals  = pd.to_numeric([r["nilai"] for r in rows], errors="coerce")
+            s = pd.Series(vals.values, index=dates).dropna().sort_index()
+            if len(s) > 10:
+                data["bi_rate"] = s
+                print(f"    ✓ bi_rate: {len(s)} data dari data.go.id")
+    except:
+        pass
+
+    # Fallback: BI rate dari estimasi JISDOR
+    try:
+        url = ("https://query1.finance.yahoo.com/v8/finance/chart/USDIDR=X"
+               "?range=5y&interval=1mo&includePrePost=false")
+        req = urllib.request.Request(url, headers=HEADERS)
+        with urllib.request.urlopen(req, timeout=15, context=CTX) as r:
+            d = json.loads(r.read().decode())
+        res = d["chart"]["result"]
+        if res:
+            ts     = res[0]["timestamp"]
+            closes = res[0]["indicators"]["quote"][0]["close"]
+            dates  = pd.to_datetime(ts, unit="s").normalize()
+            s = pd.Series(closes, index=dates).dropna()
+            data["jisdor_monthly"] = s
+            print(f"    ✓ jisdor_monthly: {len(s)} data")
+    except:
+        pass
+
+    return data
+
+
+def download_komoditas_indonesia():
+    """
+    Download harga komoditas penting Indonesia dari Yahoo Finance.
+    CPO, batu bara, nikel, timah, karet — semua ekspor utama Indonesia.
+    """
+    tickers = {
+        "PALM": "cpo_sgx",       # CPO di SGX (proxy)
+        "SBIN.BO": "steel_india", # Steel India (proxy nikel)
+        "MTF=F": "coal",          # Newcastle Coal Futures
+        "NG=F": "natgas",         # Natural Gas
+        "HG=F": "copper",         # Copper
+        "SI=F": "silver",         # Silver
+        "GC=F": "gold",           # Gold
+        "CL=F": "crude_oil",      # WTI Crude
+        "BZ=F": "brent",          # Brent Crude
+        "^JKSE": "ihsg",          # IHSG index
+        "USDIDR=X": "usdidr",
+        "^VIX": "vix",
+        "^GSPC": "sp500",
+        "^TNX": "usbond_10y",
+        "DX=F": "dxy",            # Dollar Index
+    }
+    data = {}
+    for ticker, nama in tickers.items():
+        s = yahoo(ticker, period="5y")
+        if s is not None:
+            data[nama] = s
+            print(f"    ✓ {nama}: {len(s)} hari")
+        else:
+            print(f"    ✗ {nama}")
+        time.sleep(0.4)
+    return data
+
+
+def download_semua_data_indonesia():
+    """Gabungkan semua sumber data Indonesia."""
+    print("  Download data Indonesia...")
+    data = {}
+
+    # Komoditas & makro global
+    data_kom = download_komoditas_indonesia()
+    data.update(data_kom)
+
+    # BI Rate & kurs
+    data_bi = download_bi_rate()
+    data.update(data_bi)
+
+    print(f"  Total sumber: {len(data)}")
+    return data
+
+
+# ══════════════════════════════════════════════════════════════
+# UJI KORELASI — Filter fitur signifikan
+# ══════════════════════════════════════════════════════════════
+
+def uji_korelasi_fitur(X, y, threshold=0.03):
+    """
+    Uji korelasi semua fitur dengan target.
+    Pakai Pearson + Spearman, ambil yang |korelasi| > threshold.
+    Return: list fitur signifikan + DataFrame hasil korelasi
+    """
+    hasil = []
+    for col in X.columns:
+        try:
+            x_col = pd.to_numeric(X[col], errors="coerce").fillna(0)
+            # Pearson
+            corr_p = x_col.corr(y.astype(float))
+            # Spearman (rank-based, lebih robust)
+            corr_s = x_col.rank().corr(y.astype(float).rank())
+
+            # Ambil yang lebih besar absolutnya
+            max_corr = max(abs(corr_p), abs(corr_s)) if not (pd.isna(corr_p) and pd.isna(corr_s)) else 0
+            hasil.append({
+                "fitur"    : col,
+                "pearson"  : round(float(corr_p) if not pd.isna(corr_p) else 0, 4),
+                "spearman" : round(float(corr_s) if not pd.isna(corr_s) else 0, 4),
+                "max_abs"  : round(float(max_corr), 4),
+                "signifikan": max_corr >= threshold,
+            })
+        except:
+            pass
+
+    df_kor = pd.DataFrame(hasil).sort_values("max_abs", ascending=False)
+
+    # Simpan hasil korelasi
+    os.makedirs("logs/brain", exist_ok=True)
+    df_kor.to_csv("logs/brain/korelasi_fitur.csv", index=False)
+
+    # Fitur signifikan
+    fitur_sig = df_kor[df_kor["signifikan"]]["fitur"].tolist()
+
+    # Minimal 10 fitur terbaik
+    if len(fitur_sig) < 10:
+        fitur_sig = df_kor.head(10)["fitur"].tolist()
+
+    print(f"  Fitur signifikan: {len(fitur_sig)}/{len(df_kor)} "
+          f"(threshold={threshold})")
+    if len(df_kor) > 0:
+        top3 = df_kor.head(3)["fitur"].tolist()
+        print(f"  Top 3 fitur: {', '.join(top3)}")
+
+    return fitur_sig, df_kor
+
+
+def tambah_fitur_indonesia(f, df, data_indo):
+    """Tambahkan fitur dari data Indonesia ke dataframe fitur."""
+    for nama, series in data_indo.items():
+        try:
+            s = series.reindex(df.index, method="ffill")
+            r = s.pct_change()
+            f[f"{nama}_ret"]  = r
+            f[f"{nama}_lag1"] = r.shift(1)
+            f[f"{nama}_ma5"]  = (s - s.rolling(5).mean()) / s.rolling(5).mean().replace(0, np.nan)
+
+            # Fitur spesifik
+            if nama == "vix":
+                f["vix_tinggi"] = (s.shift(1) > 25).astype(int)
+                f["vix_turun"]  = ((s < s.shift(1)) & (s.shift(1) > 25)).astype(int)
+            if nama == "usdidr":
+                f["rupiah_lemah2"]  = (s > 16500).astype(int)
+                f["rupiah_menguat"] = (r < -0.005).astype(int)
+            if nama == "ihsg":
+                f["ihsg_naik"]    = (r > 0).astype(int)
+                f["ihsg_naik_3d"] = (s.pct_change(3) > 0).astype(int)
+            if nama == "coal":
+                f["coal_tinggi"] = (s > s.rolling(60).mean()).astype(int)
+            if nama == "brent":
+                f["brent_spike2"] = (r.shift(1) > 0.03).astype(int)
+            if nama == "dxy":
+                f["dxy_naik"] = (r > 0).astype(int)
+            if "bi_rate" in nama:
+                f["bi_rate_val"] = s.reindex(df.index, method="ffill")
+        except:
+            pass
+    return f
+
+
 # ── Sektor ────────────────────────────────────────────────────
 SEKTOR = {
     "BBCA":"perbankan","BBRI":"perbankan","BMRI":"perbankan","BBNI":"perbankan",
@@ -164,7 +362,7 @@ SEKTOR = {
 }
 
 # ── Fitur ─────────────────────────────────────────────────────
-def buat_fitur(df, data_asia):
+def buat_fitur(df, data_asia, data_indo=None):
     close  = pd.to_numeric(df["close"], errors="coerce")
     high   = pd.to_numeric(df.get("high", close), errors="coerce")
     low    = pd.to_numeric(df.get("low", close), errors="coerce")
@@ -254,9 +452,12 @@ def buat_fitur(df, data_asia):
             f["vvix_turun"]  = ((s<s.shift(1))&(s.shift(1)>30)).astype(int)
         if nama=="brent":
             f["brent_spike"] = (r_a.shift(1)>0.03).astype(int)
+    # Tambah fitur Indonesia kalau ada
+    if data_indo:
+        f = tambah_fitur_indonesia(f, df, data_indo)
     return f
 
-def buat_dataset(kode, data_asia, min_hari=300):
+def buat_dataset(kode, data_asia, min_hari=300, data_indo=None):
     for path in [f"data/{kode}.csv",f"data/biostatistik/saham/{kode}.csv"]:
         if not os.path.exists(path): continue
         try:
@@ -270,7 +471,7 @@ def buat_dataset(kode, data_asia, min_hari=300):
             df = df.dropna(subset=["close"])
             if len(df) < min_hari: return None, None
             df["target"] = (df["close"].shift(-1)>df["close"]).astype(int)
-            X = buat_fitur(df, data_asia)
+            X = buat_fitur(df, data_asia, data_indo)
             y = df["target"]
             valid = y.notna()&(X.isna().sum(axis=1)<X.shape[1]*0.4)
             X = X[valid].fillna(0)
@@ -408,6 +609,245 @@ def safe_run(fungsi, *args, nama="fungsi", max_retry=3, **kwargs):
     return None
 
 
+# ══════════════════════════════════════════════════════════════
+# RETRAIN SWING MODEL (gabungan dengan brain)
+# ══════════════════════════════════════════════════════════════
+
+SWING_ACC_FILE = "logs/brain/best_swing_acc.txt"
+
+def load_best_swing_acc():
+    if os.path.exists(SWING_ACC_FILE):
+        try: return float(open(SWING_ACC_FILE).read().strip())
+        except: pass
+    return 0.60
+
+def save_best_swing_acc(acc):
+    with open(SWING_ACC_FILE,"w") as f: f.write(str(acc))
+
+def buat_fitur_swing_brain(df, data_indo=None):
+    """Fitur swing untuk brain (lebih lengkap dari scoring_swing.py)."""
+    close  = pd.to_numeric(df["close"],  errors="coerce")
+    high   = pd.to_numeric(df.get("high",  close), errors="coerce")
+    low    = pd.to_numeric(df.get("low",   close), errors="coerce")
+    volume = pd.to_numeric(df.get("volume",
+             pd.Series(1e6, index=df.index)), errors="coerce").fillna(1e6)
+    ret = close.pct_change()
+    f   = pd.DataFrame(index=df.index)
+
+    # RSI
+    delta = close.diff()
+    gain  = delta.clip(lower=0).rolling(14).mean()
+    loss  = (-delta).clip(lower=0).rolling(14).mean()
+    rsi   = 100 - (100 / (1 + gain / loss.replace(0, np.nan)))
+    f["rsi"]           = rsi
+    f["rsi_oversold"]  = (rsi < 30).astype(int)
+    f["rsi_naik"]      = ((rsi > rsi.shift(1)) & (rsi < 50)).astype(int)
+    f["rsi_cross50"]   = ((rsi > 50) & (rsi.shift(1) <= 50)).astype(int)
+
+    # MACD
+    ema12  = close.ewm(span=12).mean()
+    ema26  = close.ewm(span=26).mean()
+    macd   = ema12 - ema26
+    signal = macd.ewm(span=9).mean()
+    f["macd"]          = macd
+    f["macd_hist"]     = macd - signal
+    f["macd_cross"]    = ((macd > signal) & (macd.shift(1) <= signal.shift(1))).astype(int)
+    f["macd_positif"]  = (macd > 0).astype(int)
+
+    # BB
+    sma5  = close.rolling(5).mean()
+    sma10 = close.rolling(10).mean()
+    sma20 = close.rolling(20).mean()
+    sma50 = close.rolling(50).mean()
+    std20 = close.rolling(20).std()
+    bb_lo = sma20 - 2*std20
+    f["bb_pct"]        = (close - bb_lo) / (4*std20).replace(0, np.nan)
+    f["below_bb"]      = (close < bb_lo).astype(int)
+    f["close_vs_sma5"] = (close / sma5.replace(0,np.nan) - 1)
+    f["close_vs_sma10"]= (close / sma10.replace(0,np.nan) - 1)
+    f["close_vs_sma50"]= (close / sma50.replace(0,np.nan) - 1)
+    f["golden_cross"]  = ((sma5>sma10)&(sma10>sma50)).astype(int)
+
+    # Volume
+    vol_ma = volume.rolling(20).mean().replace(0,np.nan)
+    f["vol_ratio"]     = volume / vol_ma
+    f["vol_spike"]     = (f["vol_ratio"] > 2).astype(int)
+    f["akumulasi"]     = ((close>close.shift(1))&(f["vol_ratio"]>1.5)).astype(int)
+    f["akumulasi_2d"]  = f["akumulasi"].rolling(2).sum()
+
+    # Breakout
+    high20 = high.rolling(20).max()
+    low20  = low.rolling(20).min()
+    f["breakout_up"]   = ((close>high20.shift(1))&(f["vol_ratio"]>1.5)).astype(int)
+    f["near_high20"]   = ((close/high20.replace(0,np.nan))>0.97).astype(int)
+    f["range_pct"]     = (high20-low20)/low20.replace(0,np.nan)
+
+    # Stochastic
+    low14  = low.rolling(14).min()
+    high14 = high.rolling(14).max()
+    stoch  = (close-low14)/(high14-low14).replace(0,np.nan)*100
+    stoch_d= stoch.rolling(3).mean()
+    f["stoch_k"]       = stoch
+    f["stoch_oversold"]= (stoch<20).astype(int)
+    f["stoch_cross"]   = ((stoch>stoch_d)&(stoch.shift(1)<=stoch_d.shift(1))&(stoch<40)).astype(int)
+
+    # Candle
+    body   = abs(close-close.shift(1))
+    shadow = high-low
+    f["hammer"]        = ((shadow>body*2)&(close>close.shift(1))).astype(int)
+    f["strong_candle"] = ((close-close.shift(1))>close.shift(1)*0.02).astype(int)
+
+    # Returns
+    for lag in [1,2,3,5]:
+        f[f"ret_{lag}d"] = ret.shift(lag)
+    f["ret_5d_sum"]    = ret.shift(1).rolling(5).sum()
+    f["volatility_5d"] = ret.rolling(5).std()
+    f["volatility_10d"]= ret.rolling(10).std()
+
+    # MFI
+    tp   = (high+low+close)/3
+    mf   = tp*volume
+    pmf  = mf.where(tp>tp.shift(1),0).rolling(14).sum()
+    nmf  = mf.where(tp<tp.shift(1),0).rolling(14).sum()
+    mfi  = 100-(100/(1+pmf/nmf.replace(0,np.nan)))
+    f["mfi"]           = mfi
+    f["mfi_oversold"]  = (mfi<20).astype(int)
+
+    # Kalender
+    f["hari"]          = df.index.dayofweek
+    f["bulan"]         = df.index.month
+    f["senin"]         = (df.index.dayofweek==0).astype(int)
+    f["jumat"]         = (df.index.dayofweek==4).astype(int)
+
+    # Tambah data Indonesia
+    if data_indo:
+        f = tambah_fitur_indonesia(f, df, data_indo)
+
+    return f
+
+
+def retrain_swing(data_indo=None):
+    """
+    Retrain model swing 1-3 hari dengan data terbaru + uji korelasi.
+    Dipanggil oleh training_loop() setelah training model utama.
+    """
+    print("  [SWING] Loading data saham...")
+    folder_list = ["data/idx500", "data", "data/biostatistik/saham"]
+
+    X_all = []
+    y_all = []
+    n_saham = 0
+
+    for folder in folder_list:
+        if not os.path.exists(folder): continue
+        for fname in os.listdir(folder):
+            if not fname.endswith(".csv"): continue
+            kode = fname.replace(".csv","")
+            if any(x.lower() in kode.lower() for x in
+                   ["KOMODITAS","MAKRO","CUACA","IHSG","VIX","USD"]): continue
+            if not (len(kode) <= 6 and kode.isupper()): continue
+
+            path = os.path.join(folder, fname)
+            try:
+                df = pd.read_csv(path)
+                df.columns = [c.lower() for c in df.columns]
+                if "date" not in df.columns: continue
+                df["date"] = pd.to_datetime(df["date"])
+                df = df.set_index("date").sort_index()
+                for col in ["close","high","low","volume"]:
+                    if col in df.columns:
+                        df[col] = pd.to_numeric(df[col], errors="coerce")
+                df = df.dropna(subset=["close"])
+                df = df[df["close"] > 50]
+                if len(df) < 150: continue
+
+                # TARGET swing: naik >= 1.5% dalam 1-3 hari
+                close = df["close"]
+                ret_max = pd.DataFrame({
+                    "r1": close.shift(-1)/close-1,
+                    "r2": close.shift(-2)/close-1,
+                    "r3": close.shift(-3)/close-1,
+                }).max(axis=1)
+                target = (ret_max >= 0.015).astype(int)
+
+                X = buat_fitur_swing_brain(df, data_indo)
+                df_g = X.copy()
+                df_g["target"] = target
+                valid = df_g["target"].notna() & (df_g.isna().sum(axis=1) < df_g.shape[1]*0.4)
+                df_g = df_g[valid].fillna(0)
+                if len(df_g) < 100: continue
+
+                X_all.append(df_g.drop("target", axis=1))
+                y_all.append(df_g["target"])
+                n_saham += 1
+            except:
+                continue
+
+    if not X_all:
+        print("  [SWING] Tidak ada data!")
+        return
+
+    X_combined = pd.concat(X_all).fillna(0)
+    y_combined = pd.concat(y_all)
+    X_combined = X_combined.loc[:, X_combined.nunique() > 1]
+
+    print(f"  [SWING] Dataset: {len(X_combined):,} baris | {n_saham} saham | {X_combined.shape[1]} fitur")
+
+    # Uji korelasi — filter fitur signifikan
+    print("  [SWING] Uji korelasi fitur...")
+    fitur_sig, df_kor = uji_korelasi_fitur(X_combined, y_combined, threshold=0.02)
+    fitur_ada = [f for f in fitur_sig if f in X_combined.columns]
+    if len(fitur_ada) >= 10:
+        X_combined = X_combined[fitur_ada]
+        print(f"  [SWING] Filter korelasi: {len(fitur_ada)} fitur signifikan")
+
+    # Simpan hasil korelasi swing
+    df_kor.to_csv("logs/brain/korelasi_swing.csv", index=False)
+
+    # Training
+    from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
+    from sklearn.preprocessing import StandardScaler
+    from sklearn.pipeline import Pipeline
+    from sklearn.model_selection import TimeSeriesSplit, cross_val_score
+
+    fitur_list = X_combined.columns.tolist()
+    tscv = TimeSeriesSplit(n_splits=5)
+
+    model_gb = Pipeline([
+        ("scaler", StandardScaler()),
+        ("gb", GradientBoostingClassifier(
+            n_estimators=200, max_depth=5,
+            learning_rate=0.05, subsample=0.8, random_state=42))
+    ])
+    scores = cross_val_score(model_gb, X_combined, y_combined,
+                             cv=tscv, scoring="accuracy", n_jobs=-1)
+    cv_baru = float(scores.mean())
+    cv_lama = load_best_swing_acc()
+
+    print(f"  [SWING] CV baru: {cv_baru*100:.2f}% | CV lama: {cv_lama*100:.2f}%")
+
+    if cv_baru > cv_lama:
+        model_gb.fit(X_combined, y_combined)
+        model_swing = {
+            "pipeline"   : model_gb,
+            "fitur"      : fitur_list,
+            "cv_accuracy": round(cv_baru, 4),
+            "nama_model" : "GradientBoosting",
+            "target"     : "naik >= 1.5% dalam 1-3 hari",
+            "n_saham"    : n_saham,
+            "n_data"     : len(X_combined),
+            "tanggal"    : datetime.now().strftime("%Y-%m-%d"),
+        }
+        with open("models/model_swing.pkl","wb") as f:
+            pickle.dump(model_swing, f)
+        save_best_swing_acc(cv_baru)
+        print(f"  [SWING] ✅ Model swing diupdate! {cv_lama*100:.2f}% -> {cv_baru*100:.2f}%")
+        return cv_baru, True
+    else:
+        print(f"  [SWING] Model swing belum ada peningkatan")
+        return cv_baru, False
+
+
 STRATEGI = [
     # nama,          min_hari, trees, depth, leaves, algo
     ("RF-Standard",   300,     300,   10,    15,     "rf"),
@@ -417,7 +857,7 @@ STRATEGI = [
     ("GB-Boost",      400,     200,    5,    20,     "gb"),
 ]
 
-def train_satu_strategi(idx, data_asia, per_sektor):
+def train_satu_strategi(idx, data_asia, per_sektor, data_indo=None):
     nama, min_hari, trees, depth, leaves, algo = STRATEGI[idx]
     hasil = []
     models = {}
@@ -425,7 +865,7 @@ def train_satu_strategi(idx, data_asia, per_sektor):
     for sektor, saham_list in sorted(per_sektor.items()):
         X_all, y_all = [], []
         for kode in saham_list:
-            X, y = buat_dataset(kode, data_asia, min_hari)
+            X, y = buat_dataset(kode, data_asia, min_hari, data_indo)
             if X is not None:
                 X_all.append(X); y_all.append(y)
         if not X_all: continue
@@ -433,6 +873,16 @@ def train_satu_strategi(idx, data_asia, per_sektor):
         X_c = pd.concat(X_all).fillna(0)
         y_c = pd.concat(y_all)
         X_c = X_c.loc[:, X_c.nunique()>1]
+
+        # Uji korelasi — filter fitur signifikan
+        try:
+            fitur_sig, _ = uji_korelasi_fitur(X_c, y_c, threshold=0.02)
+            fitur_ada = [f for f in fitur_sig if f in X_c.columns]
+            if len(fitur_ada) >= 10:
+                X_c = X_c[fitur_ada]
+                print(f"    Korelasi filter: {len(fitur_ada)} fitur signifikan")
+        except Exception as e:
+            print(f"    Skip korelasi filter: {e}")
 
         if algo=="rf":
             clf = RandomForestClassifier(
@@ -486,6 +936,10 @@ def training_loop():
     # Download Asia dengan self-healing
     print("\nDownload pasar Asia...")
     data_asia = safe_run(download_asia, nama="download_asia") or {}
+
+    print("\nDownload data Indonesia...")
+    data_indo = safe_run(download_semua_data_indonesia, nama="download_indo") or {}
+
     per_sektor = safe_run(scan_saham, nama="scan_saham") or {}
 
     if not per_sektor:
@@ -513,7 +967,7 @@ def training_loop():
 
         # Training dengan self-healing
         result = safe_run(
-            train_satu_strategi, idx, data_asia, per_sektor,
+            train_satu_strategi, idx, data_asia, per_sektor, data_indo,
             nama=f"train_{nama}", max_retry=2
         )
 
@@ -558,6 +1012,15 @@ def training_loop():
                 break
         else:
             print(f"  Belum lebih baik dari {acc_terbaik*100:.2f}%")
+
+
+    # ── Retrain model swing (gabungan brain + swing) ──────────
+    print("\nRetrain model swing 1-3 hari...")
+    try:
+        retrain_swing(data_indo)
+    except Exception as e:
+        print(f"  Error retrain swing: {e}")
+        catat_error("retrain_swing", e)
 
     # Update state
     state["hari_ke"]       += 1
@@ -633,6 +1096,7 @@ def kirim_laporan():
 
     error_count = d.get("error_count", 0)
     error_info  = f"⚠️ {error_count} strategi gagal (auto-fixed)\n" if error_count > 0 else ""
+    if best_acc >= TARGET_ACC:
         status_msg = f"🎯 <b>TARGET {TARGET_ACC*100:.0f}% TERCAPAI!</b>"
     elif deployed:
         delta = (best_acc - BASELINE_ACC)*100
@@ -661,6 +1125,20 @@ def kirim_laporan():
         f"{'─'*32}\n"
         f"⏰ Training besok mulai 07:00 WIB"
     )
+
+    # Tambah info swing model
+    try:
+        swing_cv = load_best_swing_acc()
+        msg += (
+            f"\n{'─'*32}\n"
+            f"📈 <b>SWING MODEL (1-3 hari)</b>\n"
+            f"CV Accuracy: {swing_cv*100:.2f}%\n"
+            f"Target: naik ≥1.5% dalam 1-3 hari\n"
+            f"Scan: 400+ saham IDX"
+        )
+    except:
+        pass
+
     telegram(msg)
 
 # ── Entry point ───────────────────────────────────────────────
