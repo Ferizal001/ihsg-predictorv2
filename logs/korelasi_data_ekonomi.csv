@@ -1,0 +1,9 @@
+variabel,pearson_r,pearson_p,spearman_r,signifikan_95,n_observasi
+wisata_wisman_lag1,0.1438,0.2729,,False,60
+wisata_wisman,0.1389,0.2899,0.1268,False,60
+penerbangan_lag1,0.1277,0.3309,,False,60
+pajak_lag1,0.1004,0.4452,,False,60
+harga_ayam,0.0984,0.4543,0.0905,False,60
+penerbangan,0.0648,0.6228,0.0557,False,60
+pajak,-0.0438,0.7395,-0.0583,False,60
+harga_ayam_lag1,-0.0191,0.8846,,False,60

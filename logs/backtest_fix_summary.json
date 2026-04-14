@@ -1,0 +1,12 @@
+{
+  "tanggal": "2026-04-14 21:44",
+  "model": "GradientBoosting",
+  "cv": 66.16,
+  "total_trades": 1080,
+  "win_rate": 45.46,
+  "avg_return": -0.13,
+  "profit_factor": 0.897,
+  "total_return_pct": -21.86,
+  "max_drawdown": -46.87,
+  "sharpe": 0.839
+}
