@@ -1,0 +1,13 @@
+variabel,pearson_r,pearson_p,lag1_r,signifikan
+bi_rate,0.2484,0.0601,0.0766,False
+inflasi_cpi,-0.1134,0.3885,-0.02,False
+cadangan_devisa,0.0361,0.784,-0.04,False
+pmi_manufaktur,0.0258,0.8451,-0.1032,False
+pdb_yoy,-0.0637,0.6636,0.0231,False
+ekspor,-0.078,0.5983,0.2048,False
+impor,-0.1692,0.2503,0.2069,False
+neraca_dagang,0.049,0.7409,0.0401,False
+net_foreign_flow,-0.0862,0.5603,-0.0126,False
+ikk,0.1141,0.4398,-0.2183,False
+kredit_perbankan,-0.2368,0.0685,0.0623,False
+yield_sbn10,-0.0276,0.8339,0.018,False
